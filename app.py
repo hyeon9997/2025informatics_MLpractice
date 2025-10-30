@@ -23,22 +23,21 @@ def to_raw_url(url: str) -> str:
         return url
     if "raw.githubusercontent.com" in url:
         return url
-    # typical: https://github.com/{user}/{repo}/blob/{branch}/path/file.csv
     return url.replace("github.com/", "raw.githubusercontent.com/").replace("/blob/", "/")
 
 # 기본 데이터셋 3개 자리(1번은 고정, 2~3번은 추후 채워넣기)
 DATASET_DEFAULTS = {
     "데이터셋 1": "https://github.com/hyeon9997/2025informatics_MLpractice/blob/main/snow_incheon.csv",
-    "데이터셋 2": "",  # TODO: 여기에 두 번째 GitHub CSV 링크(raw 가능/자동변환됨)를 넣어주세요.
-    "데이터셋 3": "",  # TODO: 여기에 세 번째 GitHub CSV 링크를 넣어주세요.
+    "데이터셋 2": "",  # TODO: 두 번째 GitHub CSV 링크
+    "데이터셋 3": "",  # TODO: 세 번째 GitHub CSV 링크
 }
 
 # --------------------------
-# 사이드바: (선택) URL 편집 영역
+# 사이드바: (선택) URL 편집
 # --------------------------
 with st.sidebar:
     st.header("🔗 데이터셋 링크 설정(선택)")
-    st.caption("필요하면 2·3번 자리에 GitHub CSV 링크를 붙여 넣으세요. raw 변환은 자동입니다.")
+    st.caption("일반 GitHub 페이지 링크여도 raw 링크로 자동 변환됩니다.")
     ds1 = st.text_input("데이터셋 1(URL)", value=DATASET_DEFAULTS["데이터셋 1"])
     ds2 = st.text_input("데이터셋 2(URL)", value=DATASET_DEFAULTS["데이터셋 2"])
     ds3 = st.text_input("데이터셋 3(URL)", value=DATASET_DEFAULTS["데이터셋 3"])
@@ -63,21 +62,16 @@ choice = st.radio(
     "사용할 데이터셋을 선택하세요",
     options=["데이터셋 1", "데이터셋 2", "데이터셋 3"],
     horizontal=True,
-    index=0,   # 기본값: 데이터셋 1 (자동 실행)
+    index=0,   # 기본값: 데이터셋 1
 )
 
-DATASET_URLS = {
-    "데이터셋 1": ds1,
-    "데이터셋 2": ds2,
-    "데이터셋 3": ds3,
-}
-
+DATASET_URLS = {"데이터셋 1": ds1, "데이터셋 2": ds2, "데이터셋 3": ds3}
 raw_url = to_raw_url(DATASET_URLS[choice])
 
 df = None
 if raw_url:
     try:
-        df = pd.read_csv(raw_url, encoding='cp949')
+        df = pd.read_csv(raw_url)
         st.success(f"✅ {choice} 불러오기 성공")
     except Exception as e:
         st.error(f"❌ {choice} 불러오기 실패: {e}")
@@ -92,7 +86,7 @@ if df is not None:
     st.dataframe(df.head(3), use_container_width=True)
 
 # --------------------------
-# 문답지
+# 문답지 — 3-3을 객관식(다중 선택)으로 변경
 # --------------------------
 st.subheader("③ 문답지 (스스로 생각해보기)")
 with st.expander("문답지 열기/닫기", expanded=True):
@@ -102,8 +96,19 @@ with st.expander("문답지 열기/닫기", expanded=True):
 **3-2.** 지도학습은 **문제와 정답**이 같이 제공되는 학습 방식입니다.
         """
     )
-    q_features = st.text_input("3-3. 문제(예측에 필요한 데이터) 속성은? (쉼표로 구분)", placeholder="예: 기온, 습도, 풍속")
-    q_target = st.text_input("3-4. 정답(예측하고 싶은 값)은?", placeholder="예: 적설량")
+    # 3-3: 객관식 + 다중 선택 (데이터 열 목록을 보기로 제시)
+    if df is not None:
+        q_features_multi = st.multiselect(
+            "3-3. 문제(예측에 필요한 데이터)에 해당하는 속성은 무엇인가요? (여러 개 선택 가능)",
+            options=list(df.columns),
+            help="체크박스처럼 여러 개 선택할 수 있어요."
+        )
+    else:
+        q_features_multi = []
+        st.info("데이터가 로드되면 3-3 문항에 열 목록이 보입니다.")
+
+    # 3-4, 3-5는 기존 방식 유지
+    q_target = st.text_input("3-4. 정답(예측하고 싶은 값)은 무엇인가요? (단일 열명)", placeholder="예: 적설량")
     q_kind = st.radio("3-5. 예측하고 싶은 값은?", ["모름(자동판단)", "수치형(회귀)", "범주형(분류)"], horizontal=True)
 
 # --------------------------
@@ -117,12 +122,21 @@ target = None
 if df is not None:
     all_cols = list(df.columns)
 
-    preset_feats = [c.strip() for c in q_features.split(",") if c.strip() in all_cols]
-    preset_target = q_target.strip() if q_target.strip() in all_cols else None
+    # 3-3에서 고른 보기를 기본값으로 자동 반영
+    features = st.multiselect(
+        "Feature(입력 변수) 선택",
+        options=all_cols,
+        default=[c for c in q_features_multi if c in all_cols],
+        help="문답지(3-3)에서 고른 항목이 기본으로 반영됩니다."
+    )
 
-    features = st.multiselect("Feature(입력 변수) 선택", options=all_cols, default=preset_feats)
-    target = st.selectbox("Target(예측할 변수) 선택", options=["<선택>"] + all_cols,
-                          index=(all_cols.index(preset_target) + 1) if preset_target in all_cols else 0)
+    # target 선택: 문답지 입력이 실제 열이면 기본 선택
+    preset_target = q_target.strip() if q_target.strip() in all_cols else None
+    target = st.selectbox(
+        "Target(예측할 변수) 선택",
+        options=["<선택>"] + all_cols,
+        index=(all_cols.index(preset_target) + 1) if preset_target in all_cols else 0
+    )
     target = None if target == "<선택>" else target
 
     # 문제 유형 결정
@@ -231,9 +245,10 @@ if (
     for i, col in enumerate(features):
         with cols[i % len(cols)]:
             if pd.api.types.is_numeric_dtype(df[col]):
-                val = float(pd.to_numeric(df[col], errors="coerce").median())
-                minv = float(pd.to_numeric(df[col], errors="coerce").min())
-                maxv = float(pd.to_numeric(df[col], errors="coerce").max())
+                col_series = pd.to_numeric(df[col], errors="coerce")
+                val = float(col_series.median())
+                minv = float(col_series.min())
+                maxv = float(col_series.max())
                 inputs[col] = st.number_input(f"{col} (수치)", value=val, help=f"≈범위 {minv:.3f} ~ {maxv:.3f}")
             else:
                 uniques = df[col].dropna().astype(str).unique().tolist()
