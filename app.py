@@ -79,8 +79,7 @@ raw_url = to_raw_url(DATASET_URLS[choice])
 df = None
 if raw_url:
     try:
-        # ✅ cp949 인코딩 강제
-        df = pd.read_csv(raw_url, encoding="cp949")
+        df = pd.read_csv(raw_url, encoding="cp949")  # cp949 인코딩
         st.success(f"✅ {choice} 불러오기 성공")
     except Exception as e:
         st.error(f"❌ {choice} 불러오기 실패: {e}")
@@ -257,7 +256,7 @@ if (
 ):
     X_test = st.session_state.X_test
     y_test = st.session_state.y_test
-    # ✅ 0번 인덱스 제외
+    # 0번 인덱스 제외
     idx_options = [i for i in st.session_state.test_indices if i != 0]
 
     st.caption("검증셋(X_test) 일부 미리보기입니다.")
@@ -284,9 +283,9 @@ else:
     st.info("모델을 학습하면 검증 데이터에서 행을 골라 예측/비교할 수 있습니다.")
 
 # --------------------------
-# ⑦ 2024/2025 예측 입력 (모든 위젯에 고유 key 부여)
+# ⑦ 직접 데이터를 입력해보자! (표 형태 입력 → 예측)
 # --------------------------
-st.subheader("⑦ 2024/2025년 값 입력 → 예측")
+st.subheader("⑦ 직접 데이터를 입력해보자!")
 if (
     df is not None
     and st.session_state.pipeline is not None
@@ -295,61 +294,42 @@ if (
     features = st.session_state.features
     problem_type = st.session_state.problem_type
 
-    def build_manual_inputs(default_year: int, year_tag: str):
-        cols = st.columns(min(3, len(features)))
-        inputs = {}
-        for i, col in enumerate(features):
-            with cols[i % len(cols)]:
-                if pd.api.types.is_numeric_dtype(df[col]):
-                    default_val = float(default_year) if looks_like_year(col) \
-                        else float(pd.to_numeric(df[col], errors="coerce").median())
-                    inputs[col] = st.number_input(
-                        f"{col} (수치) — {year_tag}",
-                        value=default_val,
-                        key=f"num_{col}_{year_tag}"
-                    )
-                else:
-                    uniques = df[col].dropna().astype(str).unique().tolist()
-                    uniques = uniques[:200] if len(uniques) > 0 else [""]
-                    idx = uniques.index(str(default_year)) if looks_like_year(col) and str(default_year) in uniques else 0
-                    inputs[col] = st.selectbox(
-                        f"{col} (범주) — {year_tag}",
-                        options=uniques,
-                        index=idx,
-                        key=f"cat_{col}_{year_tag}"
-                    )
-        return inputs
+    # 기본값 한 행 생성: 수치=중앙값, 범주=최빈/첫 값
+    defaults = {}
+    for col in features:
+        if pd.api.types.is_numeric_dtype(df[col]):
+            defaults[col] = float(pd.to_numeric(df[col], errors="coerce").median())
+        else:
+            mode_series = df[col].dropna().astype(str)
+            defaults[col] = (mode_series.mode().iloc[0] if not mode_series.mode().empty
+                             else (mode_series.iloc[0] if len(mode_series) > 0 else ""))
 
-    st.markdown("**A. 2024년 입력**")
-    inputs_2024 = build_manual_inputs(2024, "2024")
-    st.markdown("**B. 2025년 입력**")
-    inputs_2025 = build_manual_inputs(2025, "2025")
+    default_df = pd.DataFrame([defaults], columns=features)
 
-    colA, colB = st.columns(2)
-    with colA:
-        if st.button("🔮 2024년 예측", type="primary", key="btn_pred_2024"):
-            try:
-                pred_df = pd.DataFrame([inputs_2024], columns=features)
-                pred = st.session_state.pipeline.predict(pred_df)[0]
-                st.success(f"2024 예측 결과: **{float(pred):.4f}**" if problem_type == "regression"
-                           else f"2024 예측 결과: **{str(pred)}**")
-            except Exception as e:
-                st.error(f"2024 예측 오류: {e}")
+    st.caption("아래 표의 값을 직접 수정해 보세요. (한 행 입력)")
+    edited_df = st.data_editor(
+        default_df,
+        num_rows="fixed",            # 한 행 고정
+        use_container_width=True,
+        key="manual_input_editor",
+    )
 
-    with colB:
-        if st.button("🔮 2025년 예측", type="primary", key="btn_pred_2025"):
-            try:
-                pred_df = pd.DataFrame([inputs_2025], columns=features)
-                pred = st.session_state.pipeline.predict(pred_df)[0]
-                st.success(f"2025 예측 결과: **{float(pred):.4f}**" if problem_type == "regression"
-                           else f"2025 예측 결과: **{str(pred)}**")
-            except Exception as e:
-                st.error(f"2025 예측 오류: {e}")
+    if st.button("🔮 표 입력값으로 예측하기", type="primary", key="btn_predict_manual"):
+        try:
+            # 컬럼 순서 보장
+            pred_df = edited_df[features].copy()
+            pred = st.session_state.pipeline.predict(pred_df)[0]
+            if problem_type == "regression":
+                st.success(f"예측 결과(수치): **{float(pred):.4f}**")
+            else:
+                st.success(f"예측 결과(범주): **{str(pred)}**")
+        except Exception as e:
+            st.error(f"예측 중 오류: {e}")
 else:
-    st.info("모델을 학습하면 2024/2025 예측 기능을 사용할 수 있습니다.")
+    st.info("모델을 학습하면 표 입력 예측 기능을 사용할 수 있습니다.")
 
 # --------------------------
 # Footer
 # --------------------------
 st.markdown("---")
-st.caption("© 2025 지도학습 실습실 • GitHub CSV(cp949) + 선형회귀/KNN • 검증행 비교 & 2024/2025 예측 (모든 위젯 key 지정)")
+st.caption("© 2025 지도학습 실습실 • GitHub CSV(cp949) + 선형회귀/KNN • 검증행 비교 & 표 입력 예측")
