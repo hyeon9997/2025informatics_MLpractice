@@ -22,7 +22,7 @@ st.sidebar.header("📁 데이터 설정")
 data_type = st.sidebar.radio("데이터 유형 선택", ["인문", "사회", "과학", "미디어"], horizontal=True)
 git_url = st.sidebar.text_input(
     "데이터 GitHub Raw 링크 입력",
-    placeholder="예: https://raw.githubusercontent.com/사용자명/저장소/main/data.csv"
+    placeholder="https://github.com/hyeon9997/2025informatics_MLpractice/blob/main/snow_incheon.csv"
 )
 
 st.title("🧠 지도학습(분류/회귀) 체험 웹앱")
