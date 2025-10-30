@@ -77,7 +77,7 @@ raw_url = to_raw_url(DATASET_URLS[choice])
 df = None
 if raw_url:
     try:
-        df = pd.read_csv(raw_url)
+        df = pd.read_csv(raw_url, encoding='cp949')
         st.success(f"✅ {choice} 불러오기 성공")
     except Exception as e:
         st.error(f"❌ {choice} 불러오기 실패: {e}")
