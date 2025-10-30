@@ -15,9 +15,8 @@ from sklearn.metrics import mean_absolute_error, r2_score, accuracy_score, f1_sc
 
 st.set_page_config(page_title="지도학습 실습실", page_icon="🧠", layout="wide")
 
-
 # --------------------------
-# 유틸: GitHub URL → raw URL 변환
+# 유틸
 # --------------------------
 def to_raw_url(url: str) -> str:
     if not url:
@@ -26,15 +25,11 @@ def to_raw_url(url: str) -> str:
         return url
     return url.replace("github.com/", "raw.githubusercontent.com/").replace("/blob/", "/")
 
-
 def looks_like_year(col_name: str) -> bool:
     name = col_name.strip().lower()
     return name in ["year", "연도", "년도"]
 
-
-# --------------------------
 # 기본 데이터셋
-# --------------------------
 DATASET_DEFAULTS = {
     "데이터셋 1": "https://github.com/hyeon9997/2025informatics_MLpractice/blob/main/snow_incheon.csv",
     "데이터셋 2": "",
@@ -47,13 +42,11 @@ DATASET_DEFAULTS = {
 with st.sidebar:
     st.header("🔗 데이터셋 링크 설정(선택)")
     st.caption("GitHub CSV 링크를 넣으면 raw로 자동 변환됩니다.")
-    ds1 = st.text_input("데이터셋 1(URL)", value=DATASET_DEFAULTS["데이터셋 1"])
-    ds2 = st.text_input("데이터셋 2(URL)", value=DATASET_DEFAULTS["데이터셋 2"])
-    ds3 = st.text_input("데이터셋 3(URL)", value=DATASET_DEFAULTS["데이터셋 3"])
+    ds1 = st.text_input("데이터셋 1(URL)", value=DATASET_DEFAULTS["데이터셋 1"], key="ds1_url")
+    ds2 = st.text_input("데이터셋 2(URL)", value=DATASET_DEFAULTS["데이터셋 2"], key="ds2_url")
+    ds3 = st.text_input("데이터셋 3(URL)", value=DATASET_DEFAULTS["데이터셋 3"], key="ds3_url")
 
-# --------------------------
 # 세션 초기화
-# --------------------------
 for k, v in {
     "pipeline": None,
     "problem_type": None,
@@ -77,6 +70,7 @@ choice = st.radio(
     options=["데이터셋 1", "데이터셋 2", "데이터셋 3"],
     horizontal=True,
     index=0,
+    key="dataset_choice",
 )
 
 DATASET_URLS = {"데이터셋 1": ds1, "데이터셋 2": ds2, "데이터셋 3": ds3}
@@ -85,7 +79,8 @@ raw_url = to_raw_url(DATASET_URLS[choice])
 df = None
 if raw_url:
     try:
-        df = pd.read_csv(raw_url, encoding="cp949")  # ✅ 인코딩 추가
+        # ✅ cp949 인코딩 강제
+        df = pd.read_csv(raw_url, encoding="cp949")
         st.success(f"✅ {choice} 불러오기 성공")
     except Exception as e:
         st.error(f"❌ {choice} 불러오기 실패: {e}")
@@ -100,7 +95,7 @@ if df is not None:
     st.dataframe(df.head(3), use_container_width=True)
 
 # --------------------------
-# ③ 문답지 (3-3 객관식)
+# ③ 문답지 — 3-3 객관식(다중 선택)
 # --------------------------
 st.subheader("③ 문답지 (스스로 생각해보기)")
 with st.expander("문답지 열기/닫기", expanded=True):
@@ -114,14 +109,24 @@ with st.expander("문답지 열기/닫기", expanded=True):
         q_features_multi = st.multiselect(
             "3-3. 문제(예측에 필요한 데이터) 속성은? (여러 개 선택 가능)",
             options=list(df.columns),
-            help="체크박스처럼 여러 개 선택할 수 있어요."
+            help="체크박스처럼 여러 개 선택할 수 있어요.",
+            key="q_features_multi",
         )
     else:
         q_features_multi = []
-        st.info("데이터가 로드되면 열 목록이 표시됩니다.")
+        st.info("데이터가 로드되면 3-3 문항에 열 목록이 보입니다.")
 
-    q_target = st.text_input("3-4. 정답(예측하고 싶은 값)은 무엇인가요? (단일 열명)", placeholder="예: 적설량")
-    q_kind = st.radio("3-5. 예측하고 싶은 값은?", ["모름(자동판단)", "수치형(회귀)", "범주형(분류)"], horizontal=True)
+    q_target = st.text_input(
+        "3-4. 정답(예측하고 싶은 값)은 무엇인가요? (단일 열명)",
+        placeholder="예: 적설량",
+        key="q_target",
+    )
+    q_kind = st.radio(
+        "3-5. 예측하고 싶은 값은?",
+        ["모름(자동판단)", "수치형(회귀)", "범주형(분류)"],
+        horizontal=True,
+        key="q_kind",
+    )
 
 # --------------------------
 # ④ Feature / Target 설정
@@ -137,7 +142,8 @@ if df is not None:
         "Feature(입력 변수) 선택",
         options=all_cols,
         default=[c for c in q_features_multi if c in all_cols],
-        help="문답지(3-3)에서 고른 항목이 기본으로 반영됩니다."
+        help="문답지(3-3)에서 고른 항목이 기본으로 반영됩니다.",
+        key="features_select",
     )
 
     preset_target = q_target.strip() if q_target.strip() in all_cols else None
@@ -145,13 +151,14 @@ if df is not None:
         "Target(예측할 변수) 선택",
         options=["<선택>"] + all_cols,
         index=(all_cols.index(preset_target) + 1) if preset_target in all_cols else 0,
+        key="target_select",
     )
     target = None if target == "<선택>" else target
 
     if target:
-        if q_kind.startswith("수치형"):
+        if st.session_state.get("q_kind", "모름").startswith("수치형"):
             problem_type = "regression"
-        elif q_kind.startswith("범주형"):
+        elif st.session_state.get("q_kind", "모름").startswith("범주형"):
             problem_type = "classification"
         else:
             problem_type = "regression" if pd.api.types.is_numeric_dtype(df[target]) else "classification"
@@ -190,9 +197,9 @@ if df is not None and target and features:
 
     colA, colB = st.columns(2)
     with colA:
-        test_size = st.slider("검증용 데이터 비율", 0.1, 0.5, 0.2, step=0.05)
+        test_size = st.slider("검증용 데이터 비율", 0.1, 0.5, 0.2, step=0.05, key="slider_test_size")
     with colB:
-        random_state = st.number_input("랜덤 시드", min_value=0, value=42, step=1)
+        random_state = st.number_input("랜덤 시드", min_value=0, value=42, step=1, key="input_random_state")
 
     X_train, X_test, y_train, y_test = train_test_split(
         X, y,
@@ -204,13 +211,13 @@ if df is not None and target and features:
     if problem_type == "regression":
         model = LinearRegression()
     elif problem_type == "classification":
-        k = st.slider("KNN의 이웃 수 (k)", 1, 25, 5)
+        k = st.slider("KNN의 이웃 수 (k)", 1, 25, 5, key="slider_knn_k")
         model = KNeighborsClassifier(n_neighbors=k)
     else:
         model = None
         st.warning("문제 유형을 결정할 수 없습니다. Target을 확인하세요.")
 
-    if model and st.button("🚀 학습하기", type="primary"):
+    if model and st.button("🚀 학습하기", type="primary", key="btn_train"):
         pipeline = Pipeline([("preprocessor", preprocessor), ("model", model)])
         pipeline.fit(X_train, y_train)
 
@@ -250,13 +257,14 @@ if (
 ):
     X_test = st.session_state.X_test
     y_test = st.session_state.y_test
-    idx_options = [i for i in st.session_state.test_indices if i != 0]  # ✅ 0번 행 제외
+    # ✅ 0번 인덱스 제외
+    idx_options = [i for i in st.session_state.test_indices if i != 0]
 
     st.caption("검증셋(X_test) 일부 미리보기입니다.")
-    st.dataframe(X_test.head(5), use_container_width=True)
+    st.dataframe(X_test.head(5), use_container_width=True, key="x_test_preview")
 
-    selected_idx = st.selectbox("예측할 행(원본 인덱스) 선택", options=idx_options)
-    if st.button("🔍 이 행 예측하기", type="primary"):
+    selected_idx = st.selectbox("예측할 행(원본 인덱스) 선택", options=idx_options, key="row_select")
+    if st.button("🔍 이 행 예측하기", type="primary", key="btn_predict_row"):
         try:
             row_X = X_test.loc[[selected_idx]]
             true_y = y_test.loc[selected_idx]
@@ -265,7 +273,7 @@ if (
             with st.container(border=True):
                 st.markdown("**예측 결과 vs 실제 정답**")
                 st.write(f"- 선택한 행 인덱스: {selected_idx}")
-                st.dataframe(row_X, use_container_width=True)
+                st.dataframe(row_X, use_container_width=True, key=f"row_preview_{selected_idx}")
                 if st.session_state.problem_type == "regression":
                     st.success(f"예측 값: **{float(pred_y):.4f}**   |   실제 값: **{float(true_y):.4f}**")
                 else:
@@ -276,7 +284,7 @@ else:
     st.info("모델을 학습하면 검증 데이터에서 행을 골라 예측/비교할 수 있습니다.")
 
 # --------------------------
-# ⑦ 2024/2025 예측 입력
+# ⑦ 2024/2025 예측 입력 (모든 위젯에 고유 key 부여)
 # --------------------------
 st.subheader("⑦ 2024/2025년 값 입력 → 예측")
 if (
@@ -287,29 +295,39 @@ if (
     features = st.session_state.features
     problem_type = st.session_state.problem_type
 
-    def build_manual_inputs(default_year: int):
+    def build_manual_inputs(default_year: int, year_tag: str):
         cols = st.columns(min(3, len(features)))
         inputs = {}
         for i, col in enumerate(features):
             with cols[i % len(cols)]:
                 if pd.api.types.is_numeric_dtype(df[col]):
-                    val = float(default_year) if looks_like_year(col) else float(pd.to_numeric(df[col], errors="coerce").median())
-                    inputs[col] = st.number_input(f"{col} (수치)", value=val)
+                    default_val = float(default_year) if looks_like_year(col) \
+                        else float(pd.to_numeric(df[col], errors="coerce").median())
+                    inputs[col] = st.number_input(
+                        f"{col} (수치) — {year_tag}",
+                        value=default_val,
+                        key=f"num_{col}_{year_tag}"
+                    )
                 else:
                     uniques = df[col].dropna().astype(str).unique().tolist()
                     uniques = uniques[:200] if len(uniques) > 0 else [""]
                     idx = uniques.index(str(default_year)) if looks_like_year(col) and str(default_year) in uniques else 0
-                    inputs[col] = st.selectbox(f"{col} (범주)", options=uniques, index=idx)
+                    inputs[col] = st.selectbox(
+                        f"{col} (범주) — {year_tag}",
+                        options=uniques,
+                        index=idx,
+                        key=f"cat_{col}_{year_tag}"
+                    )
         return inputs
 
     st.markdown("**A. 2024년 입력**")
-    inputs_2024 = build_manual_inputs(2024)
+    inputs_2024 = build_manual_inputs(2024, "2024")
     st.markdown("**B. 2025년 입력**")
-    inputs_2025 = build_manual_inputs(2025)
+    inputs_2025 = build_manual_inputs(2025, "2025")
 
     colA, colB = st.columns(2)
     with colA:
-        if st.button("🔮 2024년 예측", type="primary"):
+        if st.button("🔮 2024년 예측", type="primary", key="btn_pred_2024"):
             try:
                 pred_df = pd.DataFrame([inputs_2024], columns=features)
                 pred = st.session_state.pipeline.predict(pred_df)[0]
@@ -319,7 +337,7 @@ if (
                 st.error(f"2024 예측 오류: {e}")
 
     with colB:
-        if st.button("🔮 2025년 예측", type="primary"):
+        if st.button("🔮 2025년 예측", type="primary", key="btn_pred_2025"):
             try:
                 pred_df = pd.DataFrame([inputs_2025], columns=features)
                 pred = st.session_state.pipeline.predict(pred_df)[0]
@@ -334,4 +352,4 @@ else:
 # Footer
 # --------------------------
 st.markdown("---")
-st.caption("© 2025 지도학습 실습실 • GitHub CSV(cp949) + 선형회귀/KNN • 검증행 비교 & 2024/2025 예측")
+st.caption("© 2025 지도학습 실습실 • GitHub CSV(cp949) + 선형회귀/KNN • 검증행 비교 & 2024/2025 예측 (모든 위젯 key 지정)")
